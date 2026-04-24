@@ -186,4 +186,44 @@ With append reducer: `data = ["A", "B"]` (both preserved)
 
 ---
 
+## Interview Questions
+
+### Conceptual
+
+1. **Why does state need to be a typed dictionary rather than a plain Python dict?**
+   > TypedDict enforces a schema at definition time — every field has a declared type, which catches errors early (wrong field name, wrong type) rather than at runtime when a node silently reads `None`. It also makes the state self-documenting: anyone reading the graph code immediately knows exactly what data flows through the workflow without having to trace every node.
+
+2. **Why does the default reducer (replace) cause data loss in parallel workflows, and how does the reducer solve it?**
+   > When two parallel nodes write to the same state field, one write will overwrite the other — the last write wins. The reducer replaces this default with a merge strategy. For example, an `add` reducer concatenates lists instead of replacing, so both parallel nodes' outputs are preserved. Without this, you'd silently lose half your results with no error raised.
+
+3. **Why does `add_messages` exist as a special reducer instead of just using a plain `add` (list append)?**
+   > `add_messages` handles LangChain message-specific concerns that `add` doesn't: it deduplicates messages by ID (so re-sending the same message doesn't create duplicates), maintains correct role ordering, and handles message updates. A plain `add` would blindly append everything including duplicates, which would corrupt the conversation history and confuse the LLM.
+
+4. **If a node returns a field that doesn't exist in the state schema, what happens?**
+   > LangGraph raises a validation error — nodes can only return updates for fields declared in the state schema. This is another benefit of TypedDict: it creates a strict contract between nodes and state. This prevents nodes from accidentally polluting state with arbitrary data.
+
+### Critical Thinking
+
+1. **A senior developer says "just make state a global variable, it's simpler." What's wrong with that approach in an LLM workflow?**
+   > Global state breaks parallelism — two parallel nodes writing to a global variable at the same time creates race conditions and non-deterministic results. It also breaks resumability: checkpointing works by snapshotting state at each step, which only works if state is an explicit, serializable object passed through the graph. Global variables can't be checkpointed or resumed. LangGraph's explicit state passing is what makes all its advanced features possible.
+
+2. **You have a parallel workflow where 5 nodes each append to a `results` list. After execution, the list has only 3 items. What's the most likely cause?**
+   > The reducer is missing or wrong. Without `Annotated[List, add]` on the `results` field, each node's return value replaces the previous one — so only the last 3 nodes to write (or however the timing works out) survive. The fix is adding the correct append reducer to the `results` field in the state schema.
+
+3. **When would you choose a custom reducer over the built-in `add` reducer for a list field?**
+   > When you need merge logic beyond simple concatenation — for example: deduplication (don't add if the item already exists), bounded lists (keep only the last N items), sorted insertion, or conditional merging (only add if a confidence score exceeds a threshold). The built-in `add` just concatenates; any business logic in the merge requires a custom reducer.
+
+### Scenario-Based
+
+1. **You're building a research agent where 4 parallel nodes each return search results. How do you design the state to correctly capture all results?**
+   > Define the state field as `results: Annotated[List[str], add]`. Each parallel node returns `{"results": [its_own_results]}`. LangGraph calls the `add` reducer for each update, concatenating lists so no results are lost. Without the `Annotated` reducer, you'd get only the last node's results.
+
+2. **In a multi-turn chatbot, a bug causes the same assistant message to appear twice in the conversation history. What's the likely cause and fix?**
+   > The likely cause is using a plain `add` reducer instead of `add_messages`. Plain `add` appends every message unconditionally, so if a message is emitted twice (e.g., due to a retry or a graph re-execution), it appears twice. The fix is switching to `add_messages`, which deduplicates by message ID so re-emitting the same message is idempotent.
+
+3. **You're designing state for an Evaluator-Optimiser workflow. The evaluator must see all previous drafts and scores, not just the latest. How do you model the state?**
+   > Use append reducers: `drafts: Annotated[List[str], add]` and `scores: Annotated[List[float], add]`. Each generator iteration appends its new draft; each evaluator appends its score. The evaluator node can then read the full history (`state["scores"]`) to detect convergence or stagnation, rather than just comparing against the single latest score.
+
+---
+
 *Studied: 2026-04-24*

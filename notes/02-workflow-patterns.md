@@ -175,4 +175,44 @@ graph.add_conditional_edges("evaluator", should_continue, {"generator": "generat
 
 ---
 
+## Interview Questions
+
+### Conceptual
+
+1. **Why does Prompt Chaining use multiple LLM calls instead of one large prompt?**
+   > Breaking a complex task into sequential steps allows each step to be optimised independently — different prompts, different models, different temperatures. A single large prompt forces the LLM to do everything at once, which degrades quality on complex tasks. Chaining also makes debugging easier: you can inspect the intermediate output at each step and pinpoint exactly where quality drops.
+
+2. **How does the Orchestrator-Worker pattern handle a situation where the orchestrator decides zero workers are needed?**
+   > If the orchestrator determines no workers are needed (e.g., the query is already answered), it can route directly to an aggregation or END node without spawning any workers. The dynamic nature of the pattern means the number of workers is always a runtime decision — zero is a valid outcome, unlike Parallelisation where the worker set is always fixed.
+
+3. **In the Evaluator-Optimiser pattern, why should the evaluator be a separate node from the generator rather than bundled together?**
+   > Separation of concerns — the generator's job is to produce content, the evaluator's job is to critique it. Bundling them means the same LLM is judging its own output, which introduces bias and reduces quality. A separate evaluator node can use a different prompt, a different model, or even a rule-based checker — and can be swapped or upgraded without touching the generator.
+
+4. **Why can the Routing pattern break down if the classifier node uses keyword matching instead of an LLM?**
+   > Keyword matching is brittle — "I want a refund for my broken device" contains neither "refund" nor "technical" as isolated keywords, so it would likely misroute. An LLM-based classifier understands intent, not just surface tokens, making it far more robust to phrasing variations. The routing pattern's reliability is entirely dependent on classifier quality.
+
+### Critical Thinking
+
+1. **When would you choose Orchestrator-Worker over Parallelisation, even though both involve concurrent execution?**
+   > Choose Orchestrator-Worker when the subtasks can't be predetermined — the query itself determines which workers are needed and how many. For example, a research assistant might search academic papers for a scientific query but social media for a trends query. Parallelisation is better when you always need the same fixed set of checks (like content moderation), since it's simpler, faster, and more predictable.
+
+2. **Prompt Chaining makes errors propagate downstream. How would you defend against this architecturally?**
+   > Insert validation nodes between chaining steps. Each validation node checks the quality or format of the previous step's output — if it fails, it either triggers a retry loop or halts with a clear error. Alternatively, wrap critical chaining steps in an Evaluator-Optimiser sub-pattern so quality is guaranteed before passing output forward. The key principle: never let a bad output silently flow to the next step.
+
+3. **Could you combine multiple patterns in a single LangGraph workflow? Give a concrete example.**
+   > Yes, patterns are composable. For a writing assistant: use Routing to classify the content type (blog vs. email vs. report); use Prompt Chaining within each branch (outline → draft → format); use Evaluator-Optimiser to refine the draft; use Parallelisation to simultaneously run grammar and plagiarism checks on the final draft. LangGraph's graph structure naturally supports this layering since each pattern is just nodes and edges.
+
+### Scenario-Based
+
+1. **You're building a YouTube video moderation system that must check policy violations, misinformation, and spam simultaneously. How do you design this?**
+   > Use Parallelisation. Define three independent nodes — `check_policy`, `check_misinformation`, `check_spam` — that all fan out from an initial `prepare` node and receive the same video content from state. Use an `Annotated` list reducer on a `flags` state field so all three write results without overwriting each other. A final `decide` node reads all flags and issues the moderation verdict.
+
+2. **A content pipeline is slow because outline → draft → edit → proofread runs fully sequentially. How do you redesign it?**
+   > Keep outline → draft sequential since each depends on the previous. But if edit and proofread are independent of each other (both just need the draft), run them in parallel as two sibling nodes that both read `draft` from state and write to separate fields. This cuts the critical path. For scale, also consider running the entire pipeline for multiple articles concurrently using a map-reduce subgraph.
+
+3. **Your Evaluator-Optimiser loop has been running for 20 iterations and hasn't converged. How do you prevent this in your LangGraph design?**
+   > Add a hard iteration cap in the routing function — if `state["iteration"] >= max_iterations`, route to END regardless of score. Also add a "diminishing returns" check: if the score hasn't improved over the last N iterations, exit early. Both conditions should be in the conditional edge function, not inside the generator or evaluator nodes, so they remain easy to tune without changing business logic.
+
+---
+
 *Studied: 2026-04-24*

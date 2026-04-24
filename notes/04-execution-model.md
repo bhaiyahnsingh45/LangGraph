@@ -204,4 +204,44 @@ The execution model **abstracts away**:
 
 ---
 
+## Interview Questions
+
+### Conceptual
+
+1. **Why does LangGraph have a separate compile step instead of running the graph directly from its definition?**
+   > Compilation validates the graph structure upfront — orphan nodes, missing START/END connections, disconnected subgraphs. This catches bugs before any execution happens, which is critical for long-running agents where discovering a structural error at step 50 wastes all prior computation. Compilation also performs optimisations and wires up internal execution machinery that `invoke()` then just runs.
+
+2. **How does message passing between nodes differ from nodes directly calling each other?**
+   > In message passing, a node doesn't know who comes next — it just returns a state update and hands off to LangGraph, which routes to the next node(s) based on edge definitions. Direct calls would tightly couple nodes together. Message passing keeps nodes fully decoupled: you can rewire the graph (change edges) without modifying any node's code.
+
+3. **Why does LangGraph execute parallel nodes within the same superstep rather than scheduling them as separate sequential steps?**
+   > Nodes that have no data dependency on each other can safely run concurrently — there's no need to wait. Batching them into one superstep maximises throughput and minimises latency. Running them sequentially when they're independent would be artificially slow. The superstep model (from Pregel) makes it explicit: all nodes in a superstep receive the same state snapshot and execute concurrently.
+
+4. **What determines when graph execution terminates?**
+   > Execution terminates when there are no more active nodes or pending messages — i.e., all currently executing nodes have completed and no edges lead to any further nodes. In practice, this means all execution paths have reached an END node. For loops, termination depends on the conditional edge eventually routing to END rather than looping back.
+
+### Critical Thinking
+
+1. **`invoke()` vs `stream()` — when would you choose streaming even if you don't need real-time output?**
+   > For long-running graphs, `stream()` lets you observe intermediate state updates as they happen — useful for debugging, logging, and monitoring which nodes are executing and in what order. With `invoke()` you only get the final result; if the graph hangs or produces a wrong result, you have no visibility into where it went wrong. Streaming gives you a live execution trace without needing LangSmith.
+
+2. **If a graph has a cycle (loop), how does LangGraph know it hasn't entered an infinite loop?**
+   > LangGraph itself doesn't enforce a loop limit — that's the developer's responsibility via the conditional edge routing function. You must write the exit condition explicitly (e.g., max iterations, quality threshold). If you forget the exit condition, the graph will loop forever. This is a deliberate design choice: LangGraph gives you the power to build cycles, but doesn't impose arbitrary limits on your workflow logic.
+
+3. **Two developers debate: one says compile the graph once at startup and reuse it; the other says compile it fresh per request. Who's right?**
+   > Compile once at startup. Compilation is an expensive structural operation (validation, wiring), while `invoke()` is cheap. Recompiling per request wastes CPU and adds latency. The compiled graph is stateless and thread-safe — state lives in the invocation call, not in the compiled object, so the same compiled graph can safely handle concurrent requests with different states.
+
+### Scenario-Based
+
+1. **Your graph has 6 nodes but after calling `compile()` you get a validation error about an orphan node. What does this mean and how do you fix it?**
+   > An orphan node is a node that was added via `add_node()` but has no edges connecting it to the rest of the graph — it can never be reached during execution. Fix it by either adding the appropriate `add_edge()` calls to connect it into the flow, or removing it with the knowledge that it was never meant to be part of this graph. The error is a design-time signal, not a runtime bug.
+
+2. **You have a parallel fan-out where 3 nodes execute concurrently. One of them takes 10x longer than the others. How does LangGraph handle this, and does it affect the other nodes?**
+   > LangGraph waits for all nodes in a superstep to complete before advancing to the next superstep. So the 2 fast nodes complete but their results aren't passed forward until the slow node also finishes. This is the barrier synchronisation model from Pregel. The other nodes aren't slowed during their own execution, but the overall superstep is gated by the slowest node. If this is a bottleneck, the slow node should be moved to its own sequential step rather than being in the parallel fan-out.
+
+3. **You invoke a graph and it returns a result, but one of the intermediate node outputs looks wrong. How do you investigate using LangGraph's execution model?**
+   > Switch from `invoke()` to `stream(stream_mode="updates")` — this yields each node's state update as it happens. You can see exactly what each node returned and in what order. If using LangSmith, the full execution trace shows node inputs, outputs, and timing. You can also add an `interrupt_before` on the suspicious node at compile time to pause execution and inspect state before that node runs.
+
+---
+
 *Studied: 2026-04-24*
