@@ -12,10 +12,6 @@ LangGraph/
 │   ├── 03-state-and-reducers.md
 │   ├── 04-execution-model.md
 │   └── ...
-├── examples/                 # Code examples for each topic
-│   └── ...
-├── projects/                 # Full projects built with LangGraph
-│   └── ...
 └── README.md
 ```
 
