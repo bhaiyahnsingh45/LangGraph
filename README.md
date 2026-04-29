@@ -24,9 +24,9 @@ LangGraph/
 | 3 | [State & Reducers](notes/03-state-and-reducers.md) | Completed | 2026-04-24 |
 | 4 | [Execution Model](notes/04-execution-model.md) | Completed | 2026-04-24 |
 | 5 | [Persistence](notes/05-persistence.md) | Completed | 2026-04-29 |
-| 6 | [Human-in-the-Loop](notes/06-human-in-the-loop.md) | Pending | - |
-| 7 | [Streaming](notes/07-streaming.md) | Pending | - |
-| 8 | [Subgraphs](notes/08-subgraphs.md) | Pending | - |
+| 6 | [Subgraphs](notes/06-subgraphs.md) | Completed | 2026-04-29 |
+| 7 | [Human-in-the-Loop](notes/07-human-in-the-loop.md) | Pending | - |
+| 8 | [Streaming](notes/08-streaming.md) | Pending | - |
 | 9 | [Tool Integration](notes/09-tool-integration.md) | Pending | - |
 | 10 | [Multi-Agent Systems](notes/10-multi-agent.md) | Pending | - |
 
