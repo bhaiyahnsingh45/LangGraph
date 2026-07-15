@@ -45,3 +45,22 @@ agent.invoke(
     config=config,  # same thread_id to resume the paused execution
     version="v2",
 )
+
+
+# 1. Approve — run tool call unchanged
+Command(resume={"decisions": [{"type": "approve"}]})
+
+# 2. Edit — run tool call with modified args
+Command(resume={"decisions": [{
+    "type": "edit",
+    "edited_action": {"name": "execute_sql", "args": {"query": "SELECT * FROM records LIMIT 10"}}
+}]})
+
+# 3. Reject — skip execution, feedback goes back to the model
+Command(resume={"decisions": [{
+    "type": "reject",
+    "message": "No, this is wrong because ..., instead do this ..."
+}]})
+
+# 4. Respond — skip execution, human message becomes the tool result directly (for "ask_user"-style tools)
+Command(resume={"decisions": [{"type": "respond", "message": "Blue."}]})
